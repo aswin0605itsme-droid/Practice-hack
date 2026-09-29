@@ -802,20 +802,116 @@ function GameAimCursor() {
 }
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<"config" | "telemetry" | "logs">("config");
+  const [activePythonTab, setActivePythonTab] = useState<string>("cluster_benchmark.py");
+  const [codeMap, setCodeMap] = useState<Record<string, string>>(() => ({
+    "cluster_benchmark.py": PYTHON_PRESETS["cluster_benchmark.py"].defaultCode,
+    "neural_cache.py": PYTHON_PRESETS["neural_cache.py"].defaultCode,
+    "latency_audit.py": PYTHON_PRESETS["latency_audit.py"].defaultCode,
+  }));
+  const [terminalOutput, setTerminalOutput] = useState<string[]>(() => {
+    const defaultCode = PYTHON_PRESETS["cluster_benchmark.py"].defaultCode;
+    return executePythonLocally(defaultCode).output;
+  });
+  const [executionMeta, setExecutionMeta] = useState<{
+    timeMs: number;
+    exitCode: number;
+    error: string | null;
+  } | null>(() => {
+    const defaultCode = PYTHON_PRESETS["cluster_benchmark.py"].defaultCode;
+    const res = executePythonLocally(defaultCode);
+    return {
+      timeMs: res.timeMs,
+      exitCode: res.error ? 1 : 0,
+      error: res.error,
+    };
+  });
+  const [isRunning, setIsRunning] = useState(false);
   const [copied, setCopied] = useState(false);
   const [email, setEmail] = useState("");
   const [formStatus, setFormStatus] = useState<"idle" | "success" | "error">("idle");
   const [feedbackMessage, setFeedbackMessage] = useState("");
 
+  const handleSelectTab = (tabName: string) => {
+    setActivePythonTab(tabName);
+    const code = codeMap[tabName] || PYTHON_PRESETS[tabName]?.defaultCode || "";
+    const res = executePythonLocally(code);
+    setTerminalOutput(res.output);
+    setExecutionMeta({
+      timeMs: res.timeMs,
+      exitCode: res.error ? 1 : 0,
+      error: res.error,
+    });
+  };
+
+  const handleRunCode = () => {
+    setIsRunning(true);
+    setTimeout(() => {
+      const activeCode = codeMap[activePythonTab] || "";
+      const result = executePythonLocally(activeCode);
+      setTerminalOutput(result.output);
+      setExecutionMeta({
+        timeMs: result.timeMs,
+        exitCode: result.error ? 1 : 0,
+        error: result.error,
+      });
+      setIsRunning(false);
+    }, 120);
+  };
+
+  const handleResetCode = () => {
+    const original = PYTHON_PRESETS[activePythonTab]?.defaultCode || "";
+    setCodeMap((prev) => ({
+      ...prev,
+      [activePythonTab]: original,
+    }));
+    const res = executePythonLocally(original);
+    setTerminalOutput(res.output);
+    setExecutionMeta({
+      timeMs: res.timeMs,
+      exitCode: res.error ? 1 : 0,
+      error: res.error,
+    });
+  };
+
+  const handleClearTerminal = () => {
+    setTerminalOutput([]);
+    setExecutionMeta(null);
+  };
+
   const handleCopyCode = async () => {
+    const code = codeMap[activePythonTab] || "";
     try {
-      await navigator.clipboard.writeText(CODE_SNIPPET);
+      await navigator.clipboard.writeText(code);
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     } catch {
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
+    }
+  };
+
+  const handleCodeChange = (newCode: string) => {
+    setCodeMap((prev) => ({
+      ...prev,
+      [activePythonTab]: newCode,
+    }));
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+      e.preventDefault();
+      handleRunCode();
+    } else if (e.key === "Tab") {
+      e.preventDefault();
+      const target = e.currentTarget;
+      const start = target.selectionStart;
+      const end = target.selectionEnd;
+      const val = target.value;
+      const newVal = val.substring(0, start) + "    " + val.substring(end);
+      handleCodeChange(newVal);
+      setTimeout(() => {
+        target.selectionStart = target.selectionEnd = start + 4;
+      }, 0);
     }
   };
 
@@ -1091,93 +1187,113 @@ export default function Home() {
               </SpotlightBox>
             </div>
 
-            {/* Interactive Dark IDE Terminal Card with Spotlight Cursor Glowing Outside Border */}
+            {/* Interactive Dark Python IDE & Live Terminal Card with Spotlight Cursor Glowing Outside Border */}
             <div id="terminal" className="mt-14 max-w-4xl mx-auto text-left">
-              <h2 className="sr-only">Interactive Cloud Configuration IDE</h2>
+              <h2 className="sr-only">Interactive Python Edge Runtime IDE</h2>
               <SpotlightBox
                 rounded="rounded-2xl"
                 glowRadius={170}
                 hoverScale="hover:scale-[1.015] hover:-translate-y-1"
                 className="shadow-[0_0_50px_-12px_rgba(0,0,0,0.8)]"
               >
-                <div className="overflow-hidden rounded-[14.5px]">
+                <div className="overflow-hidden rounded-[14.5px] border border-zinc-800/80 bg-zinc-950">
                   {/* IDE Chrome Top Bar */}
-                  <div className="flex items-center justify-between px-4 py-2.5 border-b border-zinc-800/80 bg-zinc-900/70">
-                    {/* macOS Window Controls */}
-                    <div className="flex items-center gap-2" aria-hidden="true">
-                      <span className="w-3 h-3 rounded-full bg-[#ff5f56] inline-block shadow-sm" />
-                      <span className="w-3 h-3 rounded-full bg-[#ffbd2e] inline-block shadow-sm" />
-                      <span className="w-3 h-3 rounded-full bg-[#27c93f] inline-block shadow-sm" />
+                  <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-zinc-800/90 bg-zinc-900/80 backdrop-blur-md">
+                    {/* macOS Window Controls & Python Runtime Badge */}
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1.5" aria-hidden="true">
+                        <span className="w-3 h-3 rounded-full bg-[#ff5f56] inline-block shadow-sm" />
+                        <span className="w-3 h-3 rounded-full bg-[#ffbd2e] inline-block shadow-sm" />
+                        <span className="w-3 h-3 rounded-full bg-[#27c93f] inline-block shadow-sm" />
+                      </div>
+                      <div className="hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-zinc-800/80 border border-zinc-700/60 text-[10px] font-mono text-zinc-300">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                        <span>Python 3.12 Edge VM</span>
+                      </div>
                     </div>
 
-                    {/* IDE File Tabs with ARIA semantics */}
-                    <div role="tablist" aria-label="IDE source files" className="flex items-center gap-1">
-                      <button
-                        role="tab"
-                        id="tab-config"
-                        aria-selected={activeTab === "config"}
-                        aria-controls="panel-config"
-                        onClick={() => setActiveTab("config")}
-                        className={`flex items-center gap-2 px-3 py-1 text-xs font-mono rounded-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 ${
-                          activeTab === "config"
-                            ? "bg-zinc-800 text-indigo-300 border border-zinc-700/80"
-                            : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40"
-                        }`}
-                      >
-                        <svg className="w-3.5 h-3.5 text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                          <polyline points="14 2 14 8 20 8" />
-                        </svg>
-                        hyperscale.config.ts
-                      </button>
-
-                      <button
-                        role="tab"
-                        id="tab-telemetry-ide"
-                        aria-selected={activeTab === "telemetry"}
-                        aria-controls="panel-telemetry-ide"
-                        onClick={() => setActiveTab("telemetry")}
-                        className={`flex items-center gap-2 px-3 py-1 text-xs font-mono rounded-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 ${
-                          activeTab === "telemetry"
-                            ? "bg-zinc-800 text-indigo-300 border border-zinc-700/80"
-                            : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40"
-                        }`}
-                      >
-                        <svg className="w-3.5 h-3.5 text-cyan-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                          <polygon points="12 2 2 7 12 12 22 7 12 2" />
-                          <polyline points="2 17 12 22 22 17" />
-                          <polyline points="2 12 12 17 22 12" />
-                        </svg>
-                        edge-runtime.ts
-                      </button>
-
-                      <button
-                        role="tab"
-                        id="tab-logs-ide"
-                        aria-selected={activeTab === "logs"}
-                        aria-controls="panel-logs-ide"
-                        onClick={() => setActiveTab("logs")}
-                        className={`hidden sm:flex items-center gap-2 px-3 py-1 text-xs font-mono rounded-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 ${
-                          activeTab === "logs"
-                            ? "bg-zinc-800 text-indigo-300 border border-zinc-700/80"
-                            : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40"
-                        }`}
-                      >
-                        <svg className="w-3.5 h-3.5 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                          <polyline points="4 17 10 11 4 5" />
-                          <line x1="12" y1="19" x2="20" y2="19" />
-                        </svg>
-                        telemetry.json
-                      </button>
+                    {/* Python Preset File Tabs with ARIA semantics */}
+                    <div role="tablist" aria-label="Python source files" className="flex items-center gap-1">
+                      {Object.keys(PYTHON_PRESETS).map((tabKey) => {
+                        const isActive = activePythonTab === tabKey;
+                        return (
+                          <button
+                            key={tabKey}
+                            role="tab"
+                            id={`tab-${tabKey.replace(/\./g, "-")}`}
+                            aria-selected={isActive}
+                            aria-controls={`panel-${tabKey.replace(/\./g, "-")}`}
+                            onClick={() => handleSelectTab(tabKey)}
+                            className={`flex items-center gap-2 px-3 py-1.5 text-xs font-mono rounded-lg transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
+                              isActive
+                                ? "bg-zinc-800/90 text-emerald-300 border border-emerald-500/40 shadow-sm"
+                                : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40 border border-transparent"
+                            }`}
+                          >
+                            {/* Python Icon Badge */}
+                            <svg className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 15h-2v-2h2v2zm0-4h-2V7h2v6zm4 4h-2v-2h2v2zm0-4h-2V7h2v6z" opacity="0.3" />
+                              <path d="M11.95 2C6.55 2 6.64 4.34 6.64 4.34L6.65 6.78H12v.73H4.4S2 7.23 2 12.63c0 5.4 2.1 5.22 2.1 5.22h1.25V16.1s-.07-2.1 2.07-2.1h5.36s1.99.03 1.99-1.95V4.34S15.22 2 11.95 2zM9.36 3.63a.82.82 0 1 1 0 1.64.82.82 0 0 1 0-1.64z" />
+                              <path d="M12.05 22c5.4 0 5.31-2.34 5.31-2.34l-.01-2.44H12v-.73h7.6s2.4.28 2.4-5.12c0-5.4-2.1-5.22-2.1-5.22h-1.25v1.75s.07 2.1-2.07 2.1H11.22s-1.99-.03-1.99 1.95v7.71S8.78 22 12.05 22zm2.59-1.63a.82.82 0 1 1 0-1.64.82.82 0 0 1 0 1.64z" />
+                            </svg>
+                            <span>{tabKey}</span>
+                          </button>
+                        );
+                      })}
                     </div>
 
-                    {/* Copy Button with Tooltip & Live Feedback */}
-                    <div className="relative">
+                    {/* Action Toolbar: Run Button, Reset, Copy */}
+                    <div className="flex items-center gap-2">
+                      {/* Primary Run Code Button with Emerald Pulse */}
+                      <button
+                        type="button"
+                        onClick={handleRunCode}
+                        disabled={isRunning}
+                        aria-label="Run Python code in live edge runtime"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-950 bg-emerald-400 hover:bg-emerald-300 active:scale-95 border border-emerald-300 rounded-lg shadow-[0_0_15px_rgba(52,211,153,0.35)] hover:shadow-[0_0_20px_rgba(52,211,153,0.5)] transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 disabled:opacity-50"
+                      >
+                        {isRunning ? (
+                          <>
+                            <svg className="w-3.5 h-3.5 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                            </svg>
+                            <span>Running...</span>
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24" aria-hidden="true">
+                              <polygon points="5 3 19 12 5 21 5 3" />
+                            </svg>
+                            <span>Run Code</span>
+                            <span className="hidden sm:inline-block ml-0.5 text-[10px] font-mono px-1 py-0.2 rounded bg-emerald-900/30 text-emerald-950 font-normal">
+                              Ctrl+↵
+                            </span>
+                          </>
+                        )}
+                      </button>
+
+                      {/* Reset Preset Code */}
+                      <button
+                        type="button"
+                        onClick={handleResetCode}
+                        title="Reset code to original preset"
+                        aria-label="Reset Python script to original preset"
+                        className="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-mono text-zinc-400 hover:text-zinc-200 bg-zinc-800/80 hover:bg-zinc-700/80 border border-zinc-700/70 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+                      >
+                        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                          <path d="M3 3v5h5" />
+                        </svg>
+                        <span className="hidden md:inline">Reset</span>
+                      </button>
+
+                      {/* Copy Code */}
                       <button
                         type="button"
                         onClick={handleCopyCode}
-                        aria-label={copied ? "Code copied to clipboard" : "Copy code snippet to clipboard"}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-zinc-300 bg-zinc-800/80 hover:bg-zinc-700 border border-zinc-700/70 rounded-md transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+                        aria-label={copied ? "Code copied to clipboard" : "Copy Python script to clipboard"}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-mono text-zinc-400 hover:text-zinc-200 bg-zinc-800/80 hover:bg-zinc-700/80 border border-zinc-700/70 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
                       >
                         {copied ? (
                           <>
@@ -1188,134 +1304,158 @@ export default function Home() {
                           </>
                         ) : (
                           <>
-                            <svg className="w-3.5 h-3.5 text-zinc-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                               <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
                               <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                             </svg>
-                            <span>Copy</span>
+                            <span className="hidden md:inline">Copy</span>
                           </>
                         )}
                       </button>
-                      <span role="status" aria-live="polite" className="sr-only">
-                        {copied ? "Code copied to clipboard" : ""}
-                      </span>
                     </div>
                   </div>
 
-                  {/* IDE Code Content with Line Numbers & High-Fidelity Highlighting */}
-                  <div className="p-4 sm:p-6 font-mono text-xs sm:text-sm overflow-x-auto leading-relaxed bg-zinc-950/95">
-                    {activeTab === "config" && (
-                      <div role="tabpanel" id="panel-config" aria-labelledby="tab-config">
-                        <div className="flex">
-                          {/* Line Numbers */}
-                          <div className="select-none text-zinc-600 pr-4 text-right w-7 font-mono text-xs flex flex-col space-y-0.5" aria-hidden="true">
-                            {Array.from({ length: 19 }).map((_, i) => (
-                              <span key={i}>{i + 1}</span>
-                            ))}
-                          </div>
-                          {/* Code Spans */}
-                          <pre className="text-zinc-300 font-mono text-xs sm:text-sm">
-                            <code>
-                              <span className="text-zinc-500">{"// hyperscale.config.ts"}</span>
-                              {"\n"}
-                              <span className="text-purple-400">import</span> {"{ defineCluster }"}{" "}
-                              <span className="text-purple-400">from</span>{" "}
-                              <span className="text-emerald-400">&quot;@hyperscale/core&quot;</span>;{"\n\n"}
-                              <span className="text-purple-400">export default</span>{" "}
-                              <span className="text-cyan-300">defineCluster</span>({"{"}
-                              {"\n  "}
-                              <span className="text-zinc-400">project:</span>{" "}
-                              <span className="text-emerald-400">&quot;enterprise-api&quot;</span>,{"\n  "}
-                              <span className="text-zinc-400">runtime:</span>{" "}
-                              <span className="text-emerald-400">&quot;edge-v2&quot;</span>,{"\n  "}
-                              <span className="text-zinc-400">regions:</span> [
-                              <span className="text-emerald-400">&quot;us-east&quot;</span>,{" "}
-                              <span className="text-emerald-400">&quot;eu-central&quot;</span>,{" "}
-                              <span className="text-emerald-400">&quot;ap-northeast&quot;</span>
-                              ],{"\n  "}
-                              <span className="text-indigo-300">routing:</span> {"{"}
-                              {"\n    "}
-                              <span className="text-zinc-400">strategy:</span>{" "}
-                              <span className="text-emerald-400">&quot;geo-proximity&quot;</span>,{"\n    "}
-                              <span className="text-zinc-400">maxLatencyBudgetMs:</span>{" "}
-                              <span className="text-amber-300">15</span>,{"\n  "}
-                              {"}"},{"\n  "}
-                              <span className="text-indigo-300">caching:</span> {"{"}
-                              {"\n    "}
-                              <span className="text-zinc-400">mode:</span>{" "}
-                              <span className="text-emerald-400">&quot;predictive-ml&quot;</span>,{"\n    "}
-                              <span className="text-zinc-400">staleWhileRevalidate:</span>{" "}
-                              <span className="text-amber-300">3600</span>,{"\n  "}
-                              {"}"},{"\n  "}
-                              <span className="text-indigo-300">security:</span> {"{"}
-                              {"\n    "}
-                              <span className="text-zinc-400">microVMIsolation:</span>{" "}
-                              <span className="text-cyan-300">true</span>,{"\n    "}
-                              <span className="text-zinc-400">mTLSStrict:</span>{" "}
-                              <span className="text-cyan-300">true</span>,{"\n  "}
-                              {"}"},{"\n"}
-                              {"});"}
-                            </code>
-                          </pre>
-                        </div>
-                      </div>
-                    )}
+                  {/* IDE Code Editor Workspace (Line Numbers + Interactive Editable Textarea) */}
+                  <div
+                    role="tabpanel"
+                    id={`panel-${activePythonTab.replace(/\./g, "-")}`}
+                    aria-labelledby={`tab-${activePythonTab.replace(/\./g, "-")}`}
+                    className="relative flex p-3 sm:p-5 font-mono text-xs sm:text-sm bg-zinc-950/95"
+                  >
+                    {/* Line Numbers Gutter */}
+                    <div
+                      className="select-none text-zinc-600 pr-4 text-right w-8 sm:w-10 font-mono text-xs flex flex-col space-y-0.5 pt-0.5 border-r border-zinc-800/60"
+                      aria-hidden="true"
+                    >
+                      {Array.from({
+                        length: Math.max(
+                          (codeMap[activePythonTab] || "").split("\n").length,
+                          14
+                        ),
+                      }).map((_, i) => (
+                        <span key={i} className="leading-relaxed">
+                          {i + 1}
+                        </span>
+                      ))}
+                    </div>
 
-                    {activeTab === "telemetry" && (
-                      <div role="tabpanel" id="panel-telemetry-ide" aria-labelledby="tab-telemetry-ide">
-                        <div className="flex">
-                          <div className="select-none text-zinc-600 pr-4 text-right w-7 font-mono text-xs flex flex-col space-y-0.5" aria-hidden="true">
-                            {Array.from({ length: 12 }).map((_, i) => (
-                              <span key={i}>{i + 1}</span>
-                            ))}
-                          </div>
-                          <pre className="text-zinc-300 font-mono text-xs sm:text-sm">
-                            <code>
-                              <span className="text-zinc-500">{"// edge-runtime.ts"}</span>
-                              {"\n"}
-                              <span className="text-purple-400">export async function</span>{" "}
-                              <span className="text-cyan-300">onRequest</span>(req:{" "}
-                              <span className="text-indigo-300">EdgeRequest</span>) {"{"}
-                              {"\n  "}
-                              <span className="text-purple-400">const</span> edgeCache ={" "}
-                              <span className="text-purple-400">await</span>{" "}
-                              <span className="text-cyan-300">openCache</span>();{"\n  "}
-                              <span className="text-purple-400">const</span> cached ={" "}
-                              <span className="text-purple-400">await</span> edgeCache.
-                              <span className="text-cyan-300">match</span>(req.url);{"\n  "}
-                              <span className="text-purple-400">if</span> (cached) {"{"}
-                              {"\n    "}
-                              <span className="text-purple-400">return</span> cached.
-                              <span className="text-cyan-300">withHeader</span>(
-                              <span className="text-emerald-400">&quot;X-Edge-Hit&quot;</span>,{" "}
-                              <span className="text-emerald-400">&quot;true&quot;</span>);{"\n  "}
-                              {"}"}
-                              {"\n  "}
-                              <span className="text-purple-400">return</span>{" "}
-                              <span className="text-cyan-300">dispatchToMicroVM</span>(req);{"\n"}
-                              {"}"}
-                            </code>
-                          </pre>
-                        </div>
-                      </div>
-                    )}
+                    {/* Interactive Editable Python Code Area */}
+                    <div className="relative flex-1 pl-3 sm:pl-4">
+                      <label htmlFor="python-code-editor" className="sr-only">
+                        Python Code Editor for {activePythonTab}
+                      </label>
+                      <textarea
+                        id="python-code-editor"
+                        value={codeMap[activePythonTab] || ""}
+                        onChange={(e) => handleCodeChange(e.target.value)}
+                        onKeyDown={handleKeyDown}
+                        spellCheck={false}
+                        autoCapitalize="off"
+                        autoComplete="off"
+                        autoCorrect="off"
+                        rows={Math.max(
+                          (codeMap[activePythonTab] || "").split("\n").length + 1,
+                          15
+                        )}
+                        className="w-full bg-transparent text-emerald-300/90 font-mono text-xs sm:text-sm leading-relaxed resize-none focus:outline-none focus:ring-0 border-0 p-0 selection:bg-indigo-600/60 selection:text-white caret-emerald-400 placeholder-zinc-600"
+                        placeholder="# Write or edit Python code here..."
+                      />
+                    </div>
+                  </div>
 
-                    {activeTab === "logs" && (
-                      <div role="tabpanel" id="panel-logs-ide" aria-labelledby="tab-logs-ide">
-                        <pre className="text-zinc-300 font-mono text-xs sm:text-sm">
-                          <code>
-                            {"{\n"}
-                            {"  "}<span className="text-indigo-400">&quot;event&quot;</span>: <span className="text-emerald-400">&quot;CLUSTER_PROVISIONED&quot;</span>,{"\n"}
-                            {"  "}<span className="text-indigo-400">&quot;regions_synced&quot;</span>: [<span className="text-emerald-400">&quot;fra1&quot;</span>, <span className="text-emerald-400">&quot;iad1&quot;</span>, <span className="text-emerald-400">&quot;tyo1&quot;</span>],{"\n"}
-                            {"  "}<span className="text-indigo-400">&quot;cold_start_ms&quot;</span>: <span className="text-amber-300">0</span>,{"\n"}
-                            {"  "}<span className="text-indigo-400">&quot;p99_latency_ms&quot;</span>: <span className="text-amber-300">11.2</span>,{"\n"}
-                            {"  "}<span className="text-indigo-400">&quot;mTLS_status&quot;</span>: <span className="text-emerald-400">&quot;VERIFIED&quot;</span>,{"\n"}
-                            {"  "}<span className="text-indigo-400">&quot;state&quot;</span>: <span className="text-emerald-400">&quot;HEALTHY_ACTIVE&quot;</span>{"\n"}
-                            {"}"}
-                          </code>
-                        </pre>
+                  {/* Integrated Live Terminal Console Output */}
+                  <div
+                    role="region"
+                    aria-label="Python Terminal Execution Console"
+                    aria-live="polite"
+                    className="border-t border-zinc-800/90 bg-zinc-950 font-mono text-xs"
+                  >
+                    {/* Terminal Header */}
+                    <div className="flex items-center justify-between px-4 py-2 bg-zinc-900/90 border-b border-zinc-800/60 text-zinc-400">
+                      <div className="flex items-center gap-2">
+                        <svg className="w-3.5 h-3.5 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <polyline points="4 17 10 11 4 5" />
+                          <line x1="12" y1="19" x2="20" y2="19" />
+                        </svg>
+                        <span className="font-semibold text-zinc-200">Terminal Output</span>
+                        <span className="text-zinc-500">{"//"}</span>
+                        <span className="text-zinc-400 hidden sm:inline">stdout</span>
                       </div>
-                    )}
+
+                      {/* Terminal Status Badges & Clear Button */}
+                      <div className="flex items-center gap-2">
+                        {executionMeta && (
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-wider ${
+                                executionMeta.exitCode === 0
+                                  ? "bg-emerald-950/80 text-emerald-300 border border-emerald-700/60"
+                                  : "bg-rose-950/80 text-rose-300 border border-rose-700/60"
+                              }`}
+                            >
+                              {executionMeta.exitCode === 0 ? "EXIT 0" : "EXIT 1"}
+                            </span>
+                            <span className="text-[10px] text-zinc-500 bg-zinc-800/60 border border-zinc-700/50 px-1.5 py-0.5 rounded">
+                              {executionMeta.timeMs}ms
+                            </span>
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={handleClearTerminal}
+                          title="Clear terminal console output"
+                          aria-label="Clear terminal output"
+                          className="px-2 py-0.5 text-[11px] text-zinc-400 hover:text-zinc-200 bg-zinc-800/60 hover:bg-zinc-700/60 border border-zinc-700/50 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-400"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Terminal Body */}
+                    <div className="p-4 max-h-64 overflow-y-auto space-y-1 bg-black/70">
+                      {/* Command prompt invocation banner */}
+                      <div className="flex items-center gap-2 text-zinc-500 pb-1">
+                        <span className="text-emerald-400 font-bold">$</span>
+                        <span className="text-zinc-300">python3 {activePythonTab}</span>
+                      </div>
+
+                      {/* Runtime Error Display */}
+                      {executionMeta?.error ? (
+                        <div className="text-rose-400 pt-1 space-y-1">
+                          <p className="font-semibold text-rose-300">Traceback (most recent call last):</p>
+                          <p className="pl-4 text-zinc-400">
+                            File &quot;{activePythonTab}&quot;, line 1, in &lt;module&gt;
+                          </p>
+                          <p className="pl-4 text-rose-400 font-bold">
+                            RuntimeError: {executionMeta.error}
+                          </p>
+                        </div>
+                      ) : terminalOutput.length > 0 ? (
+                        <div className="space-y-1 pt-1">
+                          {terminalOutput.map((line, idx) => (
+                            <pre
+                              key={idx}
+                              className={`font-mono text-xs whitespace-pre-wrap leading-relaxed ${
+                                line.includes("BENCHMARK") || line.includes("AUDIT") || line.includes("Engine")
+                                  ? "text-cyan-300 font-semibold"
+                                  : line.includes("HEALTHY") || line.includes("SLA") || line.includes("VERIFIED")
+                                  ? "text-emerald-400 font-semibold"
+                                  : line.includes("Ping:") || line.includes("Edge")
+                                  ? "text-zinc-200"
+                                  : "text-zinc-400"
+                              }`}
+                            >
+                              <code>{line}</code>
+                            </pre>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-zinc-600 italic py-2">
+                          # Terminal idle. Click &apos;Run Code&apos; or press Ctrl + Enter to execute.
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
               </SpotlightBox>
