@@ -318,10 +318,9 @@ function SpotlightFeatureCard({
 function GameAimCursor() {
   const cursorRef = useRef<HTMLDivElement>(null);
   const dotRef = useRef<HTMLDivElement>(null);
-  const [isHovering, setIsHovering] = useState(false);
+  const [aimState, setAimState] = useState<"interactive" | "unselectable" | "outside">("outside");
   const [isClicking, setIsClicking] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
-  const [targetType, setTargetType] = useState<string | null>(null);
 
   useEffect(() => {
     // Only mount on devices with fine pointer (mouse)
@@ -335,6 +334,47 @@ function GameAimCursor() {
     let currentY = -100;
     let rafId: number;
 
+    const classifyTarget = (target: HTMLElement | null): "interactive" | "unselectable" | "outside" => {
+      if (!target) return "outside";
+
+      // 1. Outside content area (ambient body canvas, main wrapper, or full-width section backdrop)
+      if (
+        target === document.body ||
+        target === document.documentElement ||
+        target.id === "main-content" ||
+        target.tagName === "SECTION" ||
+        target.classList.contains("bg-zinc-950") ||
+        target.classList.contains("min-h-screen")
+      ) {
+        return "outside";
+      }
+
+      // 2. Clickable or Typable Content -> ONLY THIS IS GREEN!
+      const clickableElement = target.closest(
+        "button, a, input, textarea, select, [role='button'], [role='tab'], summary, label"
+      );
+      if (clickableElement) {
+        if (clickableElement.matches(":disabled, [aria-disabled='true']")) {
+          return "unselectable"; // Disabled button/element -> RED
+        }
+        return "interactive"; // Only clickable/typable elements -> GREEN
+      }
+
+      // 3. Any other content on the website (text, headings, paragraphs, spans, code, unselectable items) -> RED
+      const isContent = Boolean(
+        target.closest(
+          "h1, h2, h3, h4, h5, h6, p, span, code, pre, li, td, th, b, strong, em, i, article, div[role='tabpanel'], svg, img, .select-none, [aria-hidden='true']"
+        )
+      );
+
+      if (isContent) {
+        return "unselectable"; // Non-clickable content -> RED
+      }
+
+      // Default to ambient outside area -> DARKER BLUE
+      return "outside";
+    };
+
     const onMouseMove = (e: MouseEvent) => {
       mouseX = e.clientX;
       mouseY = e.clientY;
@@ -345,18 +385,9 @@ function GameAimCursor() {
         dotRef.current.style.transform = `translate3d(${mouseX}px, ${mouseY}px, 0)`;
       }
 
-      // Check if aiming at interactive elements
+      // Classify the target under the pointer
       const target = e.target as HTMLElement | null;
-      const interactive = target?.closest("button, a, input, [role='tab'], article, .group");
-      if (interactive) {
-        setIsHovering(true);
-        if (target?.closest("button, a")) setTargetType("ACTION");
-        else if (target?.closest("input")) setTargetType("INPUT");
-        else setTargetType("TARGET");
-      } else {
-        setIsHovering(false);
-        setTargetType(null);
-      }
+      setAimState(classifyTarget(target));
     };
 
     const onMouseDown = () => setIsClicking(true);
@@ -394,6 +425,42 @@ function GameAimCursor() {
 
   if (!isVisible) return null;
 
+  // Visual scheme definitions:
+  // - Green: ONLY for elements that can be clicked / typed
+  // - Red: for non-clickable content / text / unselectable items
+  // - Darker Blue: outside area / ambient canvas
+  const stateThemes = {
+    interactive: {
+      dot: "bg-emerald-400 shadow-[0_0_10px_#34d399]",
+      reticle: "border-emerald-400 shadow-[0_0_14px_rgba(52,211,153,0.5)] rotate-90",
+      ticks: "bg-emerald-400",
+      brackets: "border-emerald-400",
+      badge: "text-emerald-300 bg-emerald-950/85 border-emerald-600/70",
+      statusText: "TARGET // CLICKABLE",
+      cells: "bg-emerald-400 shadow-[0_0_4px_#34d399]",
+    },
+    unselectable: {
+      dot: "bg-rose-500 shadow-[0_0_10px_#f43f5e]",
+      reticle: "border-rose-500 shadow-[0_0_14px_rgba(244,63,94,0.5)] rotate-45",
+      ticks: "bg-rose-500",
+      brackets: "border-rose-500",
+      badge: "text-rose-300 bg-rose-950/85 border-rose-600/70",
+      statusText: "TARGET // NON-CLICK",
+      cells: "bg-rose-500 shadow-[0_0_4px_#f43f5e]",
+    },
+    outside: {
+      dot: "bg-blue-600 shadow-[0_0_8px_#2563eb]",
+      reticle: "border-blue-700/80 shadow-[0_0_10px_rgba(29,78,216,0.35)] rotate-0",
+      ticks: "bg-blue-600",
+      brackets: "border-blue-600/70",
+      badge: "text-blue-300 bg-blue-950/85 border-blue-800/60",
+      statusText: "RADAR // SCANNING",
+      cells: "bg-blue-600/60",
+    },
+  };
+
+  const theme = stateThemes[aimState];
+
   return (
     <>
       {/* 1. Pinpoint Center Crosshair Dot (instant positioning) */}
@@ -405,10 +472,8 @@ function GameAimCursor() {
         <div
           className={`w-1.5 h-1.5 rounded-full transition-all duration-150 ${
             isClicking
-              ? "bg-rose-400 scale-150 shadow-[0_0_12px_#f43f5e]"
-              : isHovering
-              ? "bg-cyan-300 scale-125 shadow-[0_0_10px_#22d3ee]"
-              : "bg-indigo-400 shadow-[0_0_6px_#818cf8]"
+              ? "scale-150 bg-white shadow-[0_0_14px_#ffffff]"
+              : theme.dot
           }`}
         />
       </div>
@@ -423,60 +488,52 @@ function GameAimCursor() {
           className={`relative flex items-center justify-center transition-all duration-200 ${
             isClicking
               ? "scale-75"
-              : isHovering
+              : aimState !== "outside"
               ? "scale-110"
               : "scale-100"
           }`}
         >
           {/* Aim Crosshair Reticle Ring & Notches */}
           <div
-            className={`w-10 h-10 rounded-full border border-dashed transition-all duration-200 flex items-center justify-center ${
-              isClicking
-                ? "border-rose-400 rotate-45 scale-90"
-                : isHovering
-                ? "border-cyan-400/90 shadow-[0_0_14px_rgba(34,211,238,0.4)] rotate-90"
-                : "border-indigo-400/40"
-            }`}
+            className={`w-10 h-10 rounded-full border border-dashed transition-all duration-200 flex items-center justify-center ${theme.reticle}`}
           >
             {/* Crosshair ticks */}
-            <div className="absolute top-0 w-0.5 h-1.5 bg-cyan-400" />
-            <div className="absolute bottom-0 w-0.5 h-1.5 bg-cyan-400" />
-            <div className="absolute left-0 h-0.5 w-1.5 bg-cyan-400" />
-            <div className="absolute right-0 h-0.5 w-1.5 bg-cyan-400" />
+            <div className={`absolute top-0 w-0.5 h-1.5 transition-colors duration-150 ${theme.ticks}`} />
+            <div className={`absolute bottom-0 w-0.5 h-1.5 transition-colors duration-150 ${theme.ticks}`} />
+            <div className={`absolute left-0 h-0.5 w-1.5 transition-colors duration-150 ${theme.ticks}`} />
+            <div className={`absolute right-0 h-0.5 w-1.5 transition-colors duration-150 ${theme.ticks}`} />
           </div>
 
           {/* Tactical Corner Aim Brackets (FPS HUD style) */}
           <div
             className={`absolute -inset-1.5 transition-all duration-200 ${
-              isHovering ? "scale-100 opacity-100" : "scale-90 opacity-60"
+              aimState !== "outside" ? "scale-100 opacity-100" : "scale-90 opacity-60"
             }`}
           >
-            <div className="absolute top-0 left-0 w-2 h-2 border-t-2 border-l-2 border-indigo-400" />
-            <div className="absolute top-0 right-0 w-2 h-2 border-t-2 border-r-2 border-indigo-400" />
-            <div className="absolute bottom-0 left-0 w-2 h-2 border-b-2 border-l-2 border-indigo-400" />
-            <div className="absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 border-indigo-400" />
+            <div className={`absolute top-0 left-0 w-2 h-2 border-t-2 border-l-2 transition-colors duration-150 ${theme.brackets}`} />
+            <div className={`absolute top-0 right-0 w-2 h-2 border-t-2 border-r-2 transition-colors duration-150 ${theme.brackets}`} />
+            <div className={`absolute bottom-0 left-0 w-2 h-2 border-b-2 border-l-2 transition-colors duration-150 ${theme.brackets}`} />
+            <div className={`absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 transition-colors duration-150 ${theme.brackets}`} />
           </div>
 
-          {/* Video Game Hotbar / Ammo & Range Meter HUD under the aim */}
+          {/* Video Game Hotbar / Ammo & Status Meter HUD under the aim */}
           <div className="absolute top-12 left-1/2 -translate-x-1/2 flex flex-col items-center gap-0.5 whitespace-nowrap font-mono select-none">
             <span
-              className={`text-[9px] font-bold tracking-widest px-1 py-0.2 rounded transition-colors ${
+              className={`text-[9px] font-bold tracking-widest px-1 py-0.2 rounded border transition-colors ${
                 isClicking
-                  ? "text-rose-400 bg-rose-950/80 border border-rose-800/60"
-                  : isHovering
-                  ? "text-cyan-300 bg-cyan-950/80 border border-cyan-800/60"
-                  : "text-zinc-500 bg-zinc-900/60 border border-zinc-800/40"
+                  ? "text-white bg-zinc-900 border-white/60 shadow-[0_0_8px_rgba(255,255,255,0.4)]"
+                  : theme.badge
               }`}
             >
-              {isClicking ? "FIRE // ENGAGED" : isHovering ? `LOCK // ${targetType || "OBJ"}` : "AIM // READY"}
+              {isClicking ? "FIRE // ENGAGED" : theme.statusText}
             </span>
 
             {/* Tactical 4-segment power/charge hotbar */}
             <div className="flex items-center gap-0.5">
-              <span className={`w-1.5 h-1 rounded-sm ${isHovering ? "bg-cyan-400 shadow-[0_0_4px_#22d3ee]" : "bg-indigo-500"}`} />
-              <span className={`w-1.5 h-1 rounded-sm ${isHovering ? "bg-cyan-400 shadow-[0_0_4px_#22d3ee]" : "bg-indigo-500"}`} />
-              <span className={`w-1.5 h-1 rounded-sm ${isHovering ? "bg-cyan-400 shadow-[0_0_4px_#22d3ee]" : "bg-indigo-500/50"}`} />
-              <span className={`w-1.5 h-1 rounded-sm ${isClicking ? "bg-rose-400 shadow-[0_0_4px_#f43f5e]" : isHovering ? "bg-cyan-400/50" : "bg-zinc-700"}`} />
+              <span className={`w-1.5 h-1 rounded-sm transition-colors duration-150 ${theme.cells}`} />
+              <span className={`w-1.5 h-1 rounded-sm transition-colors duration-150 ${theme.cells}`} />
+              <span className={`w-1.5 h-1 rounded-sm transition-colors duration-150 ${theme.cells}`} />
+              <span className={`w-1.5 h-1 rounded-sm transition-colors duration-150 ${isClicking ? "bg-white shadow-[0_0_4px_#ffffff]" : theme.cells}`} />
             </div>
           </div>
         </div>
