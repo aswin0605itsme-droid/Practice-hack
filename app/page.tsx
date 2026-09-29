@@ -151,26 +151,285 @@ const FEATURES = [
   },
 ];
 
-const CODE_SNIPPET = `// hyperscale.config.ts
-import { defineCluster } from "@hyperscale/core";
+// Python IDE Presets
+const PYTHON_PRESETS: Record<
+  string,
+  { name: string; title: string; defaultCode: string }
+> = {
+  "cluster_benchmark.py": {
+    name: "cluster_benchmark.py",
+    title: "cluster_benchmark.py",
+    defaultCode: `# cluster_benchmark.py
+# HyperScale Python Edge Runtime Simulation
+import math
 
-export default defineCluster({
-  project: "enterprise-api",
-  runtime: "edge-v2",
-  regions: ["us-east", "eu-central", "ap-northeast"],
-  routing: {
-    strategy: "geo-proximity",
-    maxLatencyBudgetMs: 15,
+def benchmark_edge_nodes(cluster_name="global-edge-prod", node_count=5):
+    print("🚀 Initializing HyperScale Python Edge Runtime v2.0...")
+    print(f"📡 Connecting to cluster '{cluster_name}' across 32 POP zones...")
+    
+    regions = ["iad-us-east", "fra-eu-central", "tyo-ap-northeast", "sin-ap-southeast", "lhr-eu-west"]
+    latencies = []
+    
+    for i in range(node_count):
+        region = regions[i % len(regions)]
+        ping = round(8.4 + (i * 1.35), 2)
+        latencies.append(ping)
+        print(f"  [Node {i+1}] {region} Ping: {ping}ms | mTLS: OK")
+        
+    p99 = max(latencies)
+    avg = round(sum(latencies) / len(latencies), 2)
+    
+    print("\\n📊 --- GLOBAL CLUSTER BENCHMARK ---")
+    print(f"⚡ Average Latency : {avg} ms")
+    print(f"⚡ p99 Latency     : {p99} ms")
+    print(f"🎯 Cache Hit Ratio : 99.18%")
+    print(f"🛡️ Zero-Trust Vault : VERIFIED (MicroVM Isolation Active)")
+    return {"status": "HEALTHY", "p99_ms": p99}
+
+result = benchmark_edge_nodes()
+print(f"\\nFinal State: {result['status']}")`,
   },
-  caching: {
-    mode: "predictive-ml",
-    staleWhileRevalidate: 3600,
+  "neural_cache.py": {
+    name: "neural_cache.py",
+    title: "neural_cache.py",
+    defaultCode: `# neural_cache.py
+# Simulates AI-assisted edge cache surge relief
+
+def calculate_cache_relief(requests_per_sec=80000, hit_ratio=0.885):
+    print("🧠 HyperScale Adaptive AI Caching Engine")
+    print(f"📥 Traffic Surge Influx : {requests_per_sec} req/sec")
+    
+    cache_hits = int(requests_per_sec * hit_ratio)
+    origin_load = requests_per_sec - cache_hits
+    relief_pct = round(hit_ratio * 100, 1)
+    
+    print(f"⚡ Edge Cached Hits     : {cache_hits} req/s")
+    print(f"🛡️ Shielded Origin Load : {origin_load} req/s")
+    print(f"📉 Primary Load Reduced  : -{relief_pct}%")
+    print("✨ Predictive Pre-warming Active for next traffic window.")
+    return relief_pct
+
+calculate_cache_relief()`,
   },
-  security: {
-    microVMIsolation: true,
-    mTLSStrict: true,
+  "latency_audit.py": {
+    name: "latency_audit.py",
+    title: "latency_audit.py",
+    defaultCode: `# latency_audit.py
+# Real-time multi-region roundtrip latency audit
+
+def audit_global_pops():
+    print("🌐 Initiating Global Edge POP Ping Latency Audit...")
+    
+    pops = [
+        ("Frankfurt (fra-1)", 8.4),
+        ("San Francisco (sfo-3)", 10.2),
+        ("Tokyo (tyo-1)", 12.1),
+        ("London (lhr-2)", 9.1),
+        ("Singapore (sin-1)", 14.5),
+        ("São Paulo (gru-1)", 18.2)
+    ]
+    
+    for city, latency in pops:
+        bar = "█" * int(latency / 2)
+        print(f"  {city} : {latency}ms {bar}")
+        
+    print("\\n✅ All 32 regions verified under 20ms p99 SLA budget.")
+
+audit_global_pops()`,
   },
-});`;
+};
+
+// Client-side Python execution engine
+function executePythonLocally(sourceCode: string): { output: string[]; timeMs: number; error: string | null } {
+  const startTime = performance.now();
+  const output: string[] = [];
+
+  try {
+    const customPrint = (...args: unknown[]) => {
+      output.push(args.map((a) => (typeof a === "object" && a !== null ? JSON.stringify(a) : String(a))).join(" "));
+    };
+
+    // Protect escaped newlines in string literals so they don't break line-by-line parsing
+    let jsCode = sourceCode.replace(/\\n/g, "__ESCAPED_NEWLINE__");
+
+    // Remove imports
+    jsCode = jsCode.replace(/^\s*import\s+\w+.*$/gm, "");
+    jsCode = jsCode.replace(/^\s*from\s+\w+\s+import\s+.*$/gm, "");
+
+    // Math functions
+    jsCode = jsCode.replace(/\bmath\.sin\b/g, "Math.sin");
+    jsCode = jsCode.replace(/\bmath\.cos\b/g, "Math.cos");
+    jsCode = jsCode.replace(/\bmath\.sqrt\b/g, "Math.sqrt");
+    jsCode = jsCode.replace(/\bmath\.floor\b/g, "Math.floor");
+    jsCode = jsCode.replace(/\bmath\.ceil\b/g, "Math.ceil");
+    jsCode = jsCode.replace(/\bmath\.pi\b/g, "Math.PI");
+
+    // Standard Python functions
+    jsCode = jsCode.replace(/\bint\(([^)]+)\)/g, "Math.floor($1)");
+    jsCode = jsCode.replace(/\bfloat\(([^)]+)\)/g, "Number($1)");
+    jsCode = jsCode.replace(/\bround\(([^,\)]+),\s*(\d+)\)/g, "Number(($1).toFixed($2))");
+    jsCode = jsCode.replace(/\bround\(([^,\)]+)\)/g, "Math.round($1)");
+    jsCode = jsCode.replace(/\bsum\(([^)]+)\)/g, "($1).reduce((a: number, b: number) => a + b, 0)");
+    jsCode = jsCode.replace(/\blen\(([^)]+)\)/g, "($1).length");
+    jsCode = jsCode.replace(/\bmax\(([^)]+)\)/g, "Math.max(...$1)");
+    jsCode = jsCode.replace(/\bmin\(([^)]+)\)/g, "Math.min(...$1)");
+    jsCode = jsCode.replace(/\.append\(/g, ".push(");
+
+    // Booleans and nulls
+    jsCode = jsCode.replace(/\bTrue\b/g, "true");
+    jsCode = jsCode.replace(/\bFalse\b/g, "false");
+    jsCode = jsCode.replace(/\bNone\b/g, "null");
+
+    // Logical operators
+    jsCode = jsCode.replace(/\band\b/g, "&&");
+    jsCode = jsCode.replace(/\bor\b/g, "||");
+    jsCode = jsCode.replace(/\bnot\s+/g, "!");
+
+    // Helper for Python range()
+    const range = (startOrEnd: number, maybeEnd?: number, step = 1) => {
+      const start = maybeEnd === undefined ? 0 : startOrEnd;
+      const end = maybeEnd === undefined ? startOrEnd : maybeEnd;
+      const arr: number[] = [];
+      for (let i = start; step > 0 ? i < end : i > end; i += step) {
+        arr.push(i);
+      }
+      return arr;
+    };
+
+    const enumerate = (iter: unknown[]) => iter.map((val, idx) => [idx, val]);
+
+    // Parse lines and indentation into JS braces
+    const rawLines = jsCode.split("\n");
+    const formattedLines: string[] = [];
+    const indentStack: number[] = [0];
+    let inMultilineCollection = false;
+
+    for (const rawLine of rawLines) {
+      if (!rawLine.trim() || rawLine.trim().startsWith("#")) {
+        continue;
+      }
+
+      const indent = rawLine.search(/\S/);
+
+      if (!inMultilineCollection) {
+        while (indentStack.length > 1 && indent < indentStack[indentStack.length - 1]) {
+          indentStack.pop();
+          formattedLines.push("}".padStart(indentStack[indentStack.length - 1] + 1, " "));
+        }
+      }
+
+      let line = rawLine.trim();
+
+      // String multiplication e.g. "█" * 5
+      line = line.replace(/"([^"]+)"\s*\*\s*([^,\)\n;]+)/g, '"$1".repeat($2)');
+      line = line.replace(/'([^']+)'\s*\*\s*([^,\)\n;]+)/g, "'$1'.repeat($2)");
+
+      // Format specifiers in f-strings: {var:<22} or {var:,}
+      line = line.replace(/\{([^}:]+):,\}/g, "${Number($1).toLocaleString()}");
+      line = line.replace(/\{([^}:]+):[<>^]?\d+\}/g, "${$1}");
+
+      // f-strings
+      line = line.replace(/f"([^"]*)"/g, (_, p1) => "`" + p1.replace(/\{([^}]+)\}/g, "${$1}") + "`");
+      line = line.replace(/f'([^']*)'/g, (_, p1) => "`" + p1.replace(/\{([^}]+)\}/g, "${$1}") + "`");
+
+      // Restore escaped newlines in string literals
+      line = line.replace(/__ESCAPED_NEWLINE__/g, "\\n");
+
+      // Function definition
+      if (line.startsWith("def ") && line.endsWith(":")) {
+        const header = line.slice(4, -1);
+        formattedLines.push(`${" ".repeat(indent)}function ${header} {`);
+        indentStack.push(indent + 4);
+        continue;
+      }
+
+      // For loops (including tuple unpacking)
+      if (line.startsWith("for ") && line.endsWith(":")) {
+        const content = line.slice(4, -1);
+        const [varName, iterable] = content.split(/\s+in\s+/);
+        if (varName.includes(",")) {
+          formattedLines.push(`${" ".repeat(indent)}for (const [${varName.trim()}] of ${iterable.trim()}) {`);
+        } else {
+          formattedLines.push(`${" ".repeat(indent)}for (const ${varName.trim()} of ${iterable.trim()}) {`);
+        }
+        indentStack.push(indent + 4);
+        continue;
+      }
+
+      // If / elif / else
+      if (line.startsWith("if ") && line.endsWith(":")) {
+        formattedLines.push(`${" ".repeat(indent)}if (${line.slice(3, -1)}) {`);
+        indentStack.push(indent + 4);
+        continue;
+      }
+      if (line.startsWith("elif ") && line.endsWith(":")) {
+        formattedLines.push(`${" ".repeat(indent)}} else if (${line.slice(5, -1)}) {`);
+        continue;
+      }
+      if (line === "else:") {
+        formattedLines.push(`${" ".repeat(indent)}} else {`);
+        continue;
+      }
+
+      // Handle multiline array / list
+      const openBrackets = (line.match(/[\[\{]/g) || []).length;
+      const closeBrackets = (line.match(/[\]\}]/g) || []).length;
+      if (openBrackets > closeBrackets) {
+        inMultilineCollection = true;
+      } else if (closeBrackets > openBrackets) {
+        inMultilineCollection = false;
+      }
+
+      // Convert tuples like ("Frankfurt (fra-1)", 8.4) into ["Frankfurt (fra-1)", 8.4] inside lists
+      if (inMultilineCollection || (line.startsWith("(") && line.endsWith("),"))) {
+        line = line.replace(/^\((.+)\)(,?)$/, "[$1]$2");
+      }
+
+      // Variable assignment
+      if (
+        !line.startsWith("return ") &&
+        !line.startsWith("print(") &&
+        line.includes("=") &&
+        !line.includes("==") &&
+        !line.includes("+=") &&
+        !line.includes("-=") &&
+        !inMultilineCollection
+      ) {
+        const first = line.split("=")[0].trim();
+        if (/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(first)) {
+          formattedLines.push(`${" ".repeat(indent)}let ${line};`);
+          continue;
+        }
+      }
+
+      const needsSemicolon = !inMultilineCollection && !line.endsWith("{") && !line.endsWith(";") && !line.endsWith(",");
+      formattedLines.push(`${" ".repeat(indent)}${line}${needsSemicolon ? ";" : ""}`);
+    }
+
+    while (indentStack.length > 1) {
+      indentStack.pop();
+      formattedLines.push("}");
+    }
+
+    const executableJS = formattedLines.join("\n");
+    const runFunction = new Function("print", "range", "enumerate", "Math", executableJS);
+    runFunction(customPrint, range, enumerate, Math);
+
+    const endTime = performance.now();
+    return {
+      output,
+      timeMs: Math.max(1, Math.round(endTime - startTime)),
+      error: null,
+    };
+  } catch (err: unknown) {
+    const endTime = performance.now();
+    return {
+      output,
+      timeMs: Math.max(1, Math.round(endTime - startTime)),
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
 
 // Reusable Spotlight Container for Every Box (Tighter, smaller glow + scale)
 interface SpotlightBoxProps {
